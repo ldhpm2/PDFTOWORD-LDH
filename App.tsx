@@ -203,7 +203,7 @@ const App: React.FC = () => {
       <div className="text-center mb-12 space-y-4 max-w-2xl">
         <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-brand-50 border border-brand-100 text-brand-600 text-xs font-bold uppercase tracking-wider mb-4">
           <Sparkles className="w-3 h-3" />
-          <span>Một sản phẩm của iTeX-Teams</span>
+          <span>PDF TO WORD TẠO BỞI LƯƠNG ĐÌNH HÙNG ZALO 0986.282.414</span>
         </div>
         <h1 className="text-5xl font-extrabold text-slate-900 tracking-tight leading-tight">
           Chuyển đổi PDF sang <span className="text-transparent bg-clip-text bg-gradient-to-r from-brand-600 to-brand-400">Word</span>
