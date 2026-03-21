@@ -1,0 +1,5 @@
+{
+  "name": "PDF2Word AI Converter",
+  "description": "Chuyển đổi PDF sang Word thông minh, tự động tách và chèn ảnh bằng Gemini AI.",
+  "requestFramePermissions": []
+}
