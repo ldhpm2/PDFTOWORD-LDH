@@ -5,16 +5,35 @@ const PDFJS_VERSION = '4.10.38';
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${PDFJS_VERSION}/pdf.worker.min.mjs`;
 
 export const loadPdf = async (file: File): Promise<pdfjsLib.PDFDocumentProxy> => {
-  const arrayBuffer = await file.arrayBuffer();
-  
-  const loadingTask = pdfjsLib.getDocument({ 
-    data: arrayBuffer,
-    // Use matching version for CMaps
-    cMapUrl: `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${PDFJS_VERSION}/cmaps/`,
-    cMapPacked: true,
-  });
-  
-  return loadingTask.promise;
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+    const data = new Uint8Array(arrayBuffer);
+    
+    // Basic check for PDF magic number (%PDF-)
+    if (data[0] !== 0x25 || data[1] !== 0x50 || data[2] !== 0x44 || data[3] !== 0x46) {
+      throw new Error("Tệp không phải là định dạng PDF hợp lệ (thiếu mã nhận diện %PDF-).");
+    }
+
+    const loadingTask = pdfjsLib.getDocument({ 
+      data: data,
+      // Use matching version for CMaps
+      cMapUrl: `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${PDFJS_VERSION}/cmaps/`,
+      cMapPacked: true,
+      // Disable range requests to avoid issues with some servers/proxies
+      disableRange: true,
+      disableAutoFetch: true,
+    });
+    
+    return await loadingTask.promise;
+  } catch (error: any) {
+    console.error("PDF Load Error:", error);
+    if (error.name === 'PasswordException') {
+      throw new Error("Tệp PDF này được bảo vệ bằng mật khẩu. Vui lòng gỡ bỏ mật khẩu trước khi chuyển đổi.");
+    } else if (error.name === 'InvalidPDFException') {
+      throw new Error("Cấu trúc tệp PDF không hợp lệ hoặc tệp đã bị hỏng.");
+    }
+    throw new Error(`Không thể đọc tệp PDF: ${error.message || 'Lỗi không xác định'}`);
+  }
 };
 
 export const renderPageToCanvas = async (
@@ -54,7 +73,7 @@ export const cropImageFromCanvas = (
   // ADD PADDING LOGIC
   // Add 25 units (on 1000 scale) padding to each side (~2.5%)
   // This ensures labels, axis numbers, or arrowheads near the edge are captured.
-  const PADDING = 25; 
+  const PADDING = 15; 
 
   ymin = Math.max(0, ymin - PADDING);
   xmin = Math.max(0, xmin - PADDING);
