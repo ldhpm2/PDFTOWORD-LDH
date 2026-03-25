@@ -130,16 +130,40 @@ const App: React.FC = () => {
           message: `Đang phân tích trang ${i}/${totalPages}...` 
         }));
 
-        // Rotate keys for each page to distribute load
-        const currentKey = validKeys[(i - 1) % validKeys.length];
-
         // 1. Render page to image
-        // Scale 2.0 for high quality crops and OCR
         const canvas = await renderPageToCanvas(pdfDoc, i, 2.0);
         const pageImageBase64 = canvas.toDataURL('image/png');
 
-        // 2. Send to Gemini
-        const analysisBlocks = await analyzePageContent(pageImageBase64, currentKey);
+        // 2. Send to Gemini with retry logic for multiple keys
+        let analysisBlocks = null;
+        let lastError = null;
+        
+        // Try each valid key until one works
+        for (let keyIndex = 0; keyIndex < validKeys.length; keyIndex++) {
+          // Start with a rotated key but allow trying others if it fails
+          const rotatedIndex = (i - 1 + keyIndex) % validKeys.length;
+          const currentKey = validKeys[rotatedIndex];
+          
+          try {
+            analysisBlocks = await analyzePageContent(pageImageBase64, currentKey);
+            if (analysisBlocks) break; // Success!
+          } catch (err: any) {
+            console.warn(`Key ${rotatedIndex + 1} failed, trying next...`, err);
+            lastError = err;
+            // If we have more keys, continue to the next one
+            if (keyIndex < validKeys.length - 1) {
+              setStatus(prev => ({ 
+                ...prev, 
+                message: `Key ${(rotatedIndex % validKeys.length) + 1} lỗi, đang thử Key ${((rotatedIndex + 1) % validKeys.length) + 1}...` 
+              }));
+              continue;
+            }
+          }
+        }
+
+        if (!analysisBlocks) {
+          throw lastError || new Error("Tất cả API Keys đều thất bại hoặc hết lượt dùng.");
+        }
 
         // 3. Process Blocks (Crop images if needed)
         setCurrentStep(3); 
