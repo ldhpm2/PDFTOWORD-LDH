@@ -14,25 +14,57 @@ const App: React.FC = () => {
     isProcessing: false
   });
   const [pdfFile, setPdfFile] = useState<File | null>(null);
-  const [apiKey, setApiKey] = useState<string>('');
+  const [apiKeys, setApiKeys] = useState<string[]>(['']);
   const [showApiKeyInput, setShowApiKeyInput] = useState(false);
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [processedPages, setProcessedPages] = useState<ProcessedPage[]>([]);
   const [currentStep, setCurrentStep] = useState(0);
 
   useEffect(() => {
-    const savedKey = localStorage.getItem('gemini_api_key');
-    if (savedKey) {
-      setApiKey(savedKey);
+    const savedKeys = localStorage.getItem('gemini_api_keys');
+    if (savedKeys) {
+      try {
+        const parsed = JSON.parse(savedKeys);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setApiKeys(parsed);
+        }
+      } catch (e) {
+        // Fallback for old single key format
+        const oldKey = localStorage.getItem('gemini_api_key');
+        if (oldKey) {
+          setApiKeys([oldKey]);
+        }
+      }
+    } else {
+      // Fallback for old single key format
+      const oldKey = localStorage.getItem('gemini_api_key');
+      if (oldKey) {
+        setApiKeys([oldKey]);
+      }
     }
   }, []);
 
-  const handleApiKeyChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newKey = e.target.value;
-    setApiKey(newKey);
-    localStorage.setItem('gemini_api_key', newKey);
+  const handleApiKeyChange = (index: number, value: string) => {
+    const newKeys = [...apiKeys];
+    newKeys[index] = value;
+    setApiKeys(newKeys);
+    localStorage.setItem('gemini_api_keys', JSON.stringify(newKeys));
     if (status.error) {
       setStatus(prev => ({ ...prev, error: undefined }));
+    }
+  };
+
+  const addApiKey = () => {
+    if (apiKeys.length < 10) {
+      setApiKeys([...apiKeys, '']);
+    }
+  };
+
+  const removeApiKey = (index: number) => {
+    if (apiKeys.length > 1) {
+      const newKeys = apiKeys.filter((_, i) => i !== index);
+      setApiKeys(newKeys);
+      localStorage.setItem('gemini_api_keys', JSON.stringify(newKeys));
     }
   };
 
@@ -58,9 +90,9 @@ const App: React.FC = () => {
   const startConversion = async () => {
     if (!pdfFile) return;
     
-    const effectiveApiKey = apiKey || process.env.API_KEY;
-    if (!effectiveApiKey) {
-        setStatus(prev => ({ ...prev, error: "Vui lòng nhập Gemini API Key để bắt đầu." }));
+    const validKeys = apiKeys.filter(k => k.trim().length >= 10);
+    if (validKeys.length === 0) {
+        setStatus(prev => ({ ...prev, error: "Vui lòng nhập ít nhất một Gemini API Key hợp lệ để bắt đầu." }));
         setShowApiKeyInput(true);
         return;
     }
@@ -69,13 +101,13 @@ const App: React.FC = () => {
       setStatus({
         total: 0,
         current: 0,
-        message: 'Đang kiểm tra API Key...',
+        message: 'Đang kiểm tra API Keys...',
         isProcessing: true,
         error: undefined
       });
 
-      // Validate API Key first
-      await validateApiKey(effectiveApiKey);
+      // Validate first API Key as a representative check
+      await validateApiKey(validKeys[0]);
 
       setCurrentStep(2);
       setStatus({
@@ -98,13 +130,16 @@ const App: React.FC = () => {
           message: `Đang phân tích trang ${i}/${totalPages}...` 
         }));
 
+        // Rotate keys for each page to distribute load
+        const currentKey = validKeys[(i - 1) % validKeys.length];
+
         // 1. Render page to image
         // Scale 2.0 for high quality crops and OCR
         const canvas = await renderPageToCanvas(pdfDoc, i, 2.0);
         const pageImageBase64 = canvas.toDataURL('image/png');
 
         // 2. Send to Gemini
-        const analysisBlocks = await analyzePageContent(pageImageBase64, effectiveApiKey);
+        const analysisBlocks = await analyzePageContent(pageImageBase64, currentKey);
 
         // 3. Process Blocks (Crop images if needed)
         setCurrentStep(3); 
@@ -219,9 +254,9 @@ const App: React.FC = () => {
         {/* API Key Input Section */}
         <div className="px-6 pt-6 sm:px-10">
           <div className="flex items-center justify-between mb-2">
-            <label htmlFor="api-key" className="text-sm font-bold text-slate-700 flex items-center gap-2">
+            <label className="text-sm font-bold text-slate-700 flex items-center gap-2">
               <Cpu className="w-4 h-4 text-brand-600" />
-              Gemini API Key
+              Gemini API Keys ({apiKeys.filter(k => k.trim().length > 0).length}/10)
             </label>
             <button 
               onClick={() => setShowApiKeyInput(!showApiKeyInput)}
@@ -231,30 +266,52 @@ const App: React.FC = () => {
             </button>
           </div>
           
-          {(showApiKeyInput || !apiKey) && (
-            <div className="relative animate-in slide-in-from-top-2 duration-300">
-              <input
-                id="api-key"
-                type="password"
-                value={apiKey}
-                onChange={handleApiKeyChange}
-                placeholder="Nhập API Key của bạn tại đây..."
-                className={`w-full px-4 py-3 rounded-xl border bg-white/50 outline-none transition-all text-sm font-mono
-                  ${status.error && !apiKey ? 'border-red-500 ring-2 ring-red-100' : 'border-slate-200 focus:ring-2 focus:ring-brand-500 focus:border-brand-500'}
-                `}
-              />
-              {status.error && !apiKey && (
-                <p className="mt-1 text-[10px] text-red-500 font-bold">Vui lòng nhập API Key</p>
+          {showApiKeyInput && (
+            <div className="space-y-3 animate-in slide-in-from-top-2 duration-300 mb-4">
+              {apiKeys.map((key, index) => (
+                <div key={index} className="flex gap-2">
+                  <div className="relative flex-1">
+                    <input
+                      type="password"
+                      value={key}
+                      onChange={(e) => handleApiKeyChange(index, e.target.value)}
+                      placeholder={`API Key ${index + 1}...`}
+                      className={`w-full px-4 py-2 rounded-xl border bg-white/50 outline-none transition-all text-sm font-mono
+                        ${status.error && !key && index === 0 ? 'border-red-500 ring-2 ring-red-100' : 'border-slate-200 focus:ring-2 focus:ring-brand-500 focus:border-brand-500'}
+                      `}
+                    />
+                  </div>
+                  {apiKeys.length > 1 && (
+                    <button 
+                      onClick={() => removeApiKey(index)}
+                      className="p-2 text-slate-400 hover:text-red-500 transition-colors"
+                      title="Xóa key này"
+                    >
+                      <AlertTriangle className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              ))}
+              
+              {apiKeys.length < 10 && (
+                <button 
+                  onClick={addApiKey}
+                  className="w-full py-2 border-2 border-dashed border-slate-200 rounded-xl text-xs font-bold text-slate-400 hover:border-brand-300 hover:text-brand-600 transition-all"
+                >
+                  + Thêm API Key mới
+                </button>
               )}
-              <p className="mt-2 text-[10px] text-slate-400">
+
+              <p className="text-[10px] text-slate-400">
                 Key được lưu cục bộ trên trình duyệt của bạn. Lấy key tại <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-brand-600 hover:underline">Google AI Studio</a>.
               </p>
             </div>
           )}
-          {!showApiKeyInput && apiKey && (
-            <div className="text-xs text-slate-400 flex items-center gap-2">
+          
+          {!showApiKeyInput && apiKeys.some(k => k.trim().length > 0) && (
+            <div className="text-xs text-slate-400 flex items-center gap-2 mb-4">
               <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
-              <span>API Key đã sẵn sàng (••••••••{apiKey.slice(-4)})</span>
+              <span>{apiKeys.filter(k => k.trim().length > 0).length} API Key đã sẵn sàng</span>
             </div>
           )}
         </div>
