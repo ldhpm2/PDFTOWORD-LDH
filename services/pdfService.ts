@@ -73,7 +73,7 @@ export const cropImageFromCanvas = (
   // ADD PADDING LOGIC
   // Add 25 units (on 1000 scale) padding to each side (~2.5%)
   // This ensures labels, axis numbers, or arrowheads near the edge are captured.
-  const PADDING = 15; 
+  const PADDING = 10; 
 
   ymin = Math.max(0, ymin - PADDING);
   xmin = Math.max(0, xmin - PADDING);
